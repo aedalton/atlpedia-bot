@@ -23,19 +23,20 @@ class BaseModel(pw.Model):
         return super().save(*args, **kwargs)
 
 
-class User(BaseModel):
+class Participant(BaseModel):
     username = pw.CharField(unique=True)
     slack_id = pw.CharField(unique=True)
 
 
 class Submission(BaseModel):  # talk submissions
-    user = pw.ForeignKeyField(User, backref='submissions')
+    user = pw.ForeignKeyField(Participant, backref='submissions')
     title = pw.CharField()
     description = pw.TextField()
     selected = pw.BooleanField(default=False)
 
 
 class Event(BaseModel):  # make a new event each time
+    category = pw.TextField(null=True)
     scheduled_date = pw.DateTimeField(unique=True)
     welcome_message = pw.TextField(null=True)
     description = pw.TextField(null=True)
@@ -45,5 +46,5 @@ class Event(BaseModel):  # make a new event each time
 
 def init_db():
     with db:
-        db.drop_tables([User, Submission, Event], safe=True)
-        db.create_tables([User, Submission, Event])
+        db.drop_tables([Participant, Submission, Event], safe=True)
+        db.create_tables([Participant, Submission, Event])
