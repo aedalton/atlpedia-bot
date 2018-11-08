@@ -49,6 +49,71 @@ def slash_commands():
         return flask.Response({}, status=200, mimetype='application/json')
 
 
+def handle_event_date_submission(payload):
+    # create_event_from_dialog
+    submission = payload.get("submission")
+    # do event creation stuff here
+    event_month = int(submission.get("event_month"))
+    event_day = int(submission.get("event_day"))
+    event_year = int(submission.get("event_year"))
+
+    event_datetime = datetime.datetime(year=event_year, month=event_month, day=event_day)
+
+    new_event = models.Event(scheduled_date=event_datetime,
+                            welcome_message=None,
+                            description=None,
+                            is_active=True)
+    existing_event = models.Event.get_or_none(models.Event.is_active == True)
+    # do more of the logical guarding
+    if existing_event:  # if event date is before this day...
+       existing_event.is_active = False
+       existing_event.save()
+
+    new_event.save()                    
+    # announce done creating event
+    return client.api_call("chat.postMessage",
+                           channel=CHANNEL,
+                           text="all done",
+                           reply_broadcast=False,
+                           response_url=payload.get("response_url"))
+
+
+def handle_talk_submission(payload):
+    submission = payload.get("submission")
+    user_model = models.Participant.get_or_none(slack_id=user.get("id"))
+    if not user_model:
+        user_model = models.Participant(slack_id=user.get("id"), username=user.get("name"))
+    user_model.save()
+
+    event_model = models.Event.select().where(models.Event.is_active == True).get()
+    submission_model = models.Submission(user=user_model,
+                                         title=submission.get("talk_title"),
+                                         description=submission.get("talk_description"))
+    submission_model.save()
+    if event_model:
+        event_model.submissions.add(submission_model)
+        event_model.save()
+
+    # complete_volunteer_signup
+    return client.api_call("chat.postMessage",
+                           channel=CHANNEL,
+                           text="all done! follow up soon.",
+                           reply_broadcast=False,
+                           response_url=payload.get("response_url"))
+
+
+def dialog_submission(payload):
+    submission = payload.get("submission")
+    if payload.get("state") == "event_date":
+        response = handle_event_date_submission(payload)
+
+    if payload.get("state") == "talk_submission":
+        response = handle_talk_submission(payload)
+
+    # check if response.contains(200) meaning success or something
+    return flask.Response({}, status=200, mimetype='application/json')
+
+
 @event_views.route("/events", methods=["GET", "POST"])
 def events():
     # dispatcher
@@ -62,48 +127,8 @@ def events():
             user = payload.get("user")
 
             if payload.get("type") == "dialog_submission":
-                submission = payload.get("submission")
-                if payload.get("state") == "event_date":
-                    # create_event_from_dialog
-                    # do event creation stuff here
-                    event_month = int(submission.get("event_month"))
-                    event_day = int(submission.get("event_day"))
-                    event_year = int(submission.get("event_year"))
-
-                    event_datetime = datetime.datetime(year=event_year, month=event_month, day=event_day)
-
-                    new_event = models.Event(scheduled_date=event_datetime,
-                                             welcome_message=None,
-                                             description=None)
-                    new_event.save()
-                    
-                    # announce done creating event
-                    response = client.api_call("chat.postMessage",
-                                               channel=CHANNEL,
-                                               text="all done",
-                                               reply_broadcast=False,
-                                               response_url=payload.get("response_url"))
-
-                if payload.get("state") == "talk_submission":
-                    user_model = models.User.get_or_none(slack_id=user.get("id"))
-                    if not user_model:
-                        user_model = models.User(slack_id=user.get("id"), username=user.get("name"))
-                    user_model.save()
-
-                    event_model = models.Event.select().where(Event.is_active == True).get()
-                    submission_model = models.Submission(user=user_model,
-                                                         title=submission.get("talk_title"),
-                                                         description=submission.get("talk_description"))
-                    submission_model.save()
-                    if event_model:
-                        event_model.submissions.add(submission_model)
-                        event_model.save()
-                    # complete_volunteer_signup
-                    client.api_call("chat.postMessage",
-                                    channel=CHANNEL,
-                                    text="all done! follow up soon.",
-                                    reply_broadcast=False,
-                                    response_url=payload.get("response_url"))                    
+                import pdb; pdb.set_trace()
+                return dialog_submission(payload)                    
 
             if payload.get("type") == "interactive_message":
                 # send volunteer dialog
